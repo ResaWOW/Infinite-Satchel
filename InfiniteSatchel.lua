@@ -1,84 +1,120 @@
--- Infinite Satchel v0.1 (bank-aware placeholder)
+-- Infinite Satchel v0.1 — search box scaffold
 -- Author: Resa (Theresa Baker)
 
 local ADDON = ...
 InfiniteSatchelDB = InfiniteSatchelDB or { hideDefault = false }
 
+----------------------------------------------------------------------
+-- Frame
+----------------------------------------------------------------------
 local ui = CreateFrame("Frame", "InfiniteSatchelFrame", UIParent, "BasicFrameTemplateWithInset")
-ui:SetSize(520, 360)
+ui:SetSize(560, 420)
 ui:SetPoint("CENTER")
 ui:Hide()
 ui.TitleText:SetText("Infinite Satchel")
-ui.label = ui:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
-ui.label:SetPoint("TOPLEFT", 16, -48)
-ui.hint = ui:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-ui.hint:SetPoint("TOPLEFT", ui.label, "BOTTOMLEFT", 0, -12)
-ui.hint:SetText("|cffaaaaaaTip: /is, /is dump, /is dumpaccount|r")
 
-local function activeBankLabel()
-  local bankType = BankFrame and BankFrame.GetActiveBankType and BankFrame:GetActiveBankType()
-  if bankType == Enum.BankType and Enum.BankType.Account then
-    return "Warband Bank (Account)"
-  end
-  return "Character Bank"
-end
+-- Header hint
+ui.hint = ui:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+ui.hint:SetPoint("TOPLEFT", 12, -32)
+ui.hint:SetText("|cffaaaaaaTip: /is (toggle), /is clear, /is search <text>|r")
 
-local function showUI()
-  ui:Show()
-  ui.label:SetText("Infinite Satchel — "..activeBankLabel())
-end
+----------------------------------------------------------------------
+-- Search Box + Clear Button
+----------------------------------------------------------------------
+local SEARCH_W, SEARCH_H = 260, 28
 
-local function hideUI() ui:Hide() end
+-- EditBox
+local searchBox = CreateFrame("EditBox", "InfiniteSatchelSearchBox", ui, "InputBoxTemplate")
+searchBox:SetSize(SEARCH_W, SEARCH_H)
+searchBox:SetAutoFocus(false)
+searchBox:SetMaxLetters(120)
+searchBox:SetPoint("TOPRIGHT", -42, -28) -- leave room for the clear button
+searchBox:HookScript("OnEscapePressed", function(self) self:ClearFocus() end)
 
--- Character bank dump (-1)
-local function DumpCharacterBank()
-  if not C_Container then return end
-  local bag = Enum.BagIndex.Bank -- -1
-  local n = C_Container.GetContainerNumSlots(bag) or 0
-  print("|cffffcc00[Infinite Satchel]|r Character bank slots:", n)
-  for slot = 1, n do
-    local info = C_Container.GetContainerItemInfo(bag, slot)
-    if info and info.hyperlink then
-      print("  slot", slot, info.hyperlink)
-    end
+-- Placeholder (grey text overlay)
+local placeholder = ui:CreateFontString(nil, "ARTWORK", "GameFontDisable")
+placeholder:SetPoint("LEFT", searchBox, "LEFT", 8, 0)
+placeholder:SetText("Search…")
+
+local function UpdatePlaceholder()
+  if searchBox:HasFocus() or (searchBox:GetText() or "") ~= "" then
+    placeholder:Hide()
+  else
+    placeholder:Show()
   end
 end
 
--- Warband account bank tab dump (-5) when that tab is visible
-local function DumpAccountBankTab()
-  if not (BankFrame and BankFrame.GetActiveBankType and BankFrame:GetActiveBankType() == Enum.BankType.Account) then
-    print("|cffff3333[Infinite Satchel]|r Open the Warband bank tab first.")
-    return
-  end
-  local bag = Enum.BagIndex.Accountbanktab -- -5
-  local n = C_Container.GetContainerNumSlots(bag) or 0
-  print("|cffffcc00[Infinite Satchel]|r Account bank tab slots:", n)
-  for slot = 1, n do
-    local info = C_Container.GetContainerItemInfo(bag, slot)
-    if info and info.hyperlink then
-      print("  slot", slot, info.hyperlink)
-    end
-  end
+searchBox:HookScript("OnEditFocusGained", UpdatePlaceholder)
+searchBox:HookScript("OnEditFocusLost", UpdatePlaceholder)
+
+-- Clear (✕) button
+local clearBtn = CreateFrame("Button", nil, ui, "UIPanelButtonTemplate")
+clearBtn:SetSize(28, 22)
+clearBtn:SetPoint("LEFT", searchBox, "RIGHT", 6, 0)
+clearBtn:SetText("✕")
+clearBtn:SetMotionScriptsWhileDisabled(true)
+
+local function ClearSearch()
+  searchBox:SetText("")
+  searchBox:ClearFocus()
+  UpdatePlaceholder()
+  -- Re-apply empty filter
+  C_Timer.After(0, function() ApplyFilter("") end)
+end
+clearBtn:SetScript("OnClick", ClearSearch)
+
+----------------------------------------------------------------------
+-- Debounced filter apply
+----------------------------------------------------------------------
+local debounceHandle
+
+function ApplyFilter(text)
+  -- 🔧 Wire this to your item grid later. For now: print to chat.
+  local shown = text and text:gsub("^%s+", ""):gsub("%s+$", "") or ""
+  print("|cffffcc00[Infinite Satchel]|r Filter:", shown ~= "" and shown or "(blank)")
 end
 
+local function DebouncedApply()
+  if debounceHandle then
+    debounceHandle:Cancel()
+  end
+  debounceHandle = C_Timer.NewTimer(0.15, function()
+    debounceHandle = nil
+    ApplyFilter(searchBox:GetText() or "")
+  end)
+end
+
+searchBox:HookScript("OnTextChanged", function(_, user)
+  if user then DebouncedApply() end
+  UpdatePlaceholder()
+end)
+
+UpdatePlaceholder()
+
+----------------------------------------------------------------------
+-- Slash commands
+----------------------------------------------------------------------
 SLASH_INFINITESATCHEL1 = "/is"
 SlashCmdList.INFINITESATCHEL = function(msg)
-  msg = (msg or ""):lower()
-  if msg == "dump" then
-    DumpCharacterBank()
-  elseif msg == "dumpaccount" then
-    DumpAccountBankTab()
-  elseif msg == "hidedefault" then
-    InfiniteSatchelDB.hideDefault = true
-    print("|cff99ff99[Infinite Satchel]|r Will hide Blizzard bank next time.")
-  elseif msg == "showdefault" then
-    InfiniteSatchelDB.hideDefault = false
-    print("|cff99ff99[Infinite Satchel]|r Will show Blizzard bank UI.")
+  msg = (msg or ""):gsub("^%s+", ""):gsub("%s+$", "")
+  local cmd, rest = msg:match("^(%S+)%s*(.*)$")
+  cmd = cmd and cmd:lower() or ""
+
+  if cmd == "clear" then
+    ClearSearch()
+  elseif cmd == "search" then
+    searchBox:SetText(rest or "")
+    searchBox:SetFocus()
+    DebouncedApply()
   else
-    if ui:IsShown() then hideUI() else showUI() end
+    -- Toggle the UI
+    if ui:IsShown() then ui:Hide() else ui:Show() end
   end
 end
 
+----------------------------------------------------------------------
+-- Optional: open our UI when the bank opens (nice for testing)
+----------------------------------------------------------------------
 local function EnsureBankHooks()
   if BankFrame and not BankFrame.__IS_Hooked then
     BankFrame:HookScript("OnShow", function()
@@ -87,21 +123,10 @@ local function EnsureBankHooks()
           if BankFrame:IsShown() then BankFrame:Hide() end
         end)
       end
-      showUI()
+      ui:Show()
     end)
-    BankFrame:HookScript("OnHide", hideUI)
+    BankFrame:HookScript("OnHide", function() ui:Hide() end)
     BankFrame.__IS_Hooked = true
-  end
-
-  if AccountBankPanel and not AccountBankPanel.__IS_Button then
-    local btn = CreateFrame("Button", nil, AccountBankPanel, "UIPanelButtonTemplate")
-    btn:SetSize(130, 22)
-    btn:SetPoint("BOTTOMLEFT", 6, 8)
-    btn:SetText("Open Satchel")
-    btn:SetScript("OnClick", function()
-      if ui:IsShown() then hideUI() else showUI() end
-    end)
-    AccountBankPanel.__IS_Button = btn
   end
 end
 
@@ -111,11 +136,10 @@ f:RegisterEvent("ADDON_LOADED")
 f:SetScript("OnEvent", function(_, event, arg1)
   if event == "PLAYER_LOGIN" then
     EnsureBankHooks()
+    print("|cffffcc00[Infinite Satchel]|r Loaded — search enabled. Try /is")
   elseif event == "ADDON_LOADED" then
     if arg1 == "Blizzard_BankUI" or arg1 == "Blizzard_AccountBankUI" or arg1 == "Blizzard_UIPanels_Game" then
       EnsureBankHooks()
     end
   end
 end)
-
-print("|cffffcc00[Infinite Satchel]|r Loaded (v0.1 placeholder).")
