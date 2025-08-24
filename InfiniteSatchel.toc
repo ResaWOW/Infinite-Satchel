@@ -1,0 +1,8 @@
+## Interface: 110200
+## Title: Infinite Satchel
+## Notes: A unified bag & Warband Bank addon
+## Author: Resa (Theresa Baker)
+## Version: 0.1.0
+## SavedVariables: InfiniteSatchelDB
+
+InfiniteSatchel.lua
