@@ -1,0 +1,22 @@
+name: Build Addon Zip
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-zip:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create zip
+        run: |
+          mkdir -p dist
+          zip -r "dist/InfiniteSatchel-${GITHUB_REF_NAME}.zip" InfiniteSatchel.toc InfiniteSatchel.lua LICENSE README.md
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
