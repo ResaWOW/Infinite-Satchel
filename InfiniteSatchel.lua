@@ -1,0 +1,6 @@
+-- Infinite Satchel (placeholder)
+local f = CreateFrame("Frame")
+f:RegisterEvent("PLAYER_LOGIN")
+f:SetScript("OnEvent", function()
+  print("|cffffcc00[Infinite Satchel]|r Loaded! (placeholder)")
+end)
